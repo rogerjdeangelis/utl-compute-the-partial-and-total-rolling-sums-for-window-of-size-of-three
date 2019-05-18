@@ -4,13 +4,16 @@
     My suggestion is to use R if you plan on further time series analysis.
     Also, I think the partial windows may cause problems down the line.
 
-      Multiple Solutions (six in all)
+      Multiple Solutions (six un all)
 
              1. SAS datastep array (This does the partial sums)
              2. R RollingWindow packages. Does not do partial sums
              3. Ehanced simpler solutions by Paul Dorfman
                 Paul Dorfman
                 sashole@bellsouth.net
+             4. Flexible Minimal keystroke macro solution by
+                Bartosz Jablonski
+                yabwon@gmail.com
 
 
     github
@@ -88,13 +91,11 @@
     / __|/ _ \| | | | | __| |/ _ \| '_ \/ __|
     \__ \ (_) | | |_| | |_| | (_) | | | \__ \
     |___/\___/|_|\__,_|\__|_|\___/|_| |_|___/
-
     ;
 
     ****************************************************
     1. SAS datastep array (This does the partial sums) *
     ****************************************************
-
     data wantPre;
          retain obs 1;
          set sd1.have sd1.have(obs=2 in=pad);
@@ -118,7 +119,6 @@
     **********************************************************
     2. R RollingWindow  packages. Does not do partial sums   *
     **********************************************************
-
     %utl_submit_r64('
     library(haven);
     library(dplyr);
@@ -130,20 +130,14 @@
     have[,want := RollingSum(NUMBER,window = 3)];
     write.xport(have,file="d:/xpt/have.xpt");
     ');
-
-
     libname xpt xport "d:/xpt/want.xpt";
     data want;
       set xpt.have;
     run;quit;
     libname xpt clear;
-
     R OUTPUT
-
     WORK.WANT total obs=6
-
        DATA     NUMBER    WANT
-
       062018      10        .
       052018      15        .
       042018      20       45
@@ -151,13 +145,9 @@
       022018      30       65
       012018      10       55
 
-
-
-
     ***********************************************
     3. Ehanced simpler solutions by Paul Dorfman  *
     ***********************************************
-
 
     The standard economical way of addressing the problem of finding sequential
     rolling sums in a window with W items is using a simple W-queue: The enqueued
@@ -178,14 +168,11 @@
     run ;
 
     %let W = 3 ;
-
     data want (drop = number) ;
       set have ;
       tot + number - sum (0, lag&w (number)) ;
     run ;
-
     However, with your setting, the same process has to run backward:
-
     data want (drop = number) ;
       do p = n to 1 by -1 ;
         set have nobs = n point = p ;
@@ -197,7 +184,6 @@
 
     The only negative effect of this approach is that the output data set is now in the reversed order.
     It can be addressed in a variety of ways, e.g.:
-
     - Save P and resort by it
     - Save the TOT values in an array and, after the file is processed, write the output in
     the same step from P=1 to N using POINT=P
@@ -205,7 +191,6 @@
     - Etc.
 
     Below is yet another variation (memory is assumed to be sufficient for the hash H):
-
     data _null_ ;
       dcl hash h (ordered:"A") ;
       h.definekey ("p") ;
@@ -219,13 +204,34 @@
       h.output (dataset:"want") ;
       stop ;
     run ;
-
     Note that despite all these variations, the basic "+-" method of
     computing the rolling sum remains the same.
-
     Best regards
 
 
+    **************************************************
+    4. Flexible Minimal keystroke macro solution     *
+    **************************************************
 
+    data have;
+    input date$ number;
+    cards4;
+    062018 10
+    052018 15
+    042018 20
+    032018 15
+    022018 30
+    012018 10
+    ;;;;
+    run;quit;
 
+    data want;
+    merge
+      have
+      have(keep = number rename=(number=number_2) firstobs=2)
+      have(keep = number rename=(number=number_3) firstobs=3)
+      ;
+    tot = sum(number, of number_:); drop number_:;
+
+    run;
 
