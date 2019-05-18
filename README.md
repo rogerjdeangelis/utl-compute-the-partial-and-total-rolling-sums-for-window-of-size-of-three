@@ -1,6 +1,5 @@
 # utl-compute-the-partial-and-total-rolling-sums-for-window-of-size-of-three
-Compute the partial and total rolling sums for window of size of three
-    Compute the partial and total rolling sums for a window of size of three
+    SAS Forum: Compute the partial and total rolling sums for a window of size of three
 
     My suggestion is to use R if you plan on further time series analysis.
     Also, I think the partial windows may cause problems down the line.
@@ -9,6 +8,11 @@ Compute the partial and total rolling sums for window of size of three
 
              1. SAS datastep array (This does the partial sums)
              2. R RollingWindow packages. Does not do partial sums
+
+             3. Ehanced simpler solutions by Paul Dorfman
+                Paul Dorfman
+                sashole@bellsouth.net
+
 
     github
     https://tinyurl.com/y5ub7x6e
@@ -96,7 +100,7 @@ Compute the partial and total rolling sums for window of size of three
          retain obs 1;
          set sd1.have sd1.have(obs=2 in=pad);
          if pad then number=0;
-         array ts{0:2} _temporary_;   * ring array shift left;
+         array ts{0:2} _temporary_;     * ring array shift left;
          ts{mod(obs-1,3)}=number;       * mod allows only indexes 0,1,2;
          if obs>=3 then do;
              tot=sum(of ts{*});
@@ -147,6 +151,81 @@ Compute the partial and total rolling sums for window of size of three
       032018      15       50
       022018      30       65
       012018      10       55
+
+
+
+
+    ***********************************************
+    3. Ehanced simpler solutions by Paul Dorfman  *
+    ***********************************************
+
+
+    The standard economical way of addressing the problem of finding sequential
+    rolling sums in a window with W items is using a simple W-queue: The enqueued
+    item is added to the rolling sum, and the dequeued item is subtracted from it.
+    Your problem is no exception; but it has a twist since you want to start the
+    summation from the Wth item rather than #1. If it started with item #1, the
+    solution would be most straightforward:
+
+    data have ;
+      input date $ number ;
+      cards ;
+    062018 10
+    052018 15
+    042018 20
+    032018 15
+    022018 30
+    012018 10
+    run ;
+
+    %let W = 3 ;
+
+    data want (drop = number) ;
+      set have ;
+      tot + number - sum (0, lag&w (number)) ;
+    run ;
+
+    However, with your setting, the same process has to run backward:
+
+    data want (drop = number) ;
+      do p = n to 1 by -1 ;
+        set have nobs = n point = p ;
+        tot + number - sum (0, lag&w (number)) ;
+        output ;
+      end ;
+      stop ;
+    run ;
+
+    The only negative effect of this approach is that the output data set is now in the reversed order.
+    It can be addressed in a variety of ways, e.g.:
+
+    - Save P and resort by it
+    - Save the TOT values in an array and, after the file is processed, write the output in
+    the same step from P=1 to N using POINT=P
+    - Store (P,TOT) pairs in a hash instead of the array and then do the same as above
+    - Etc.
+
+    Below is yet another variation (memory is assumed to be sufficient for the hash H):
+
+    data _null_ ;
+      dcl hash h (ordered:"A") ;
+      h.definekey ("p") ;
+      h.definedata ("date", "tot") ;
+      h.definedone () ;
+      do p = n to 1 by -1 ;
+        set have nobs = n point = p ;
+        tot + number - sum (0, lag&w (number)) ;
+        h.add() ;
+      end ;
+      h.output (dataset:"want") ;
+      stop ;
+    run ;
+
+    Note that despite all these variations, the basic "+-" method of
+    computing the rolling sum remains the same.
+
+    Best regards
+
 
 
 
