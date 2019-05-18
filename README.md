@@ -4,11 +4,10 @@
     My suggestion is to use R if you plan on further time series analysis.
     Also, I think the partial windows may cause problems down the line.
 
-      Two Solutions
+      Multiple Solutions (six in all)
 
              1. SAS datastep array (This does the partial sums)
              2. R RollingWindow packages. Does not do partial sums
-
              3. Ehanced simpler solutions by Paul Dorfman
                 Paul Dorfman
                 sashole@bellsouth.net
