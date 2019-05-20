@@ -1,18 +1,22 @@
-%let pgm=utl-compute-the-partial-and-total-rolling-sums-for-window-of-size-of-three;
-
 SAS Forum: Compute the partial and total rolling sums for a window of size of three
 
 My suggestion is to use R if you plan on further time series analysis.
 Also, I think the partial windows may cause problems down the line.
 
-  Multiple Solutions (six un all)
+  Multiple Solutions (eight un all)
 
+         0. Brilliant innovative solution by (interplay of two set statements plug lag)
+            Keintz, Mark
+            mkeintz@wharton.upenn.edu
          1. SAS datastep array (This does the partial sums)
          2. R RollingWindow packages. Does not do partial sums
          3. Ehanced simpler solutions by Paul Dorfman
             Paul Dorfman
             sashole@bellsouth.net
          4. Flexible Minimal keystroke macro solution by
+            Bartosz Jablonski
+            yabwon@gmail.com
+         5. Scalable HASH solution by
             Bartosz Jablonski
             yabwon@gmail.com
 
@@ -93,6 +97,40 @@ WORK.WANT total obs=6
 \__ \ (_) | | |_| | |_| | (_) | | | \__ \
 |___/\___/|_|\__,_|\__|_|\___/|_| |_|___/
 ;
+
+*********************************************************************************
+0. Brilliant innovative solution by (interplay of two set statements plug lag)  *
+*********************************************************************************
+
+I realized I've come into this thread late, but I think this does the trick:
+
+Two set statements:     yes  (but one set is conditional, to avoid premature end-of-step)
+arrays:                 no
+summing statement       yes
+lag                     yes
+
+
+data have ;
+  input date $ number ;
+  cards ;
+062018 10
+052018 15
+042018 20
+032018 15
+022018 30
+012018 10
+run ;
+
+%let wsize=3;
+data want;
+  if end1=0 then set have (keep=number) end=end1;
+  else number=0;
+  tot + number + -sum(0,l
+ag&wsize(number));
+  if _n_>=&wsize;
+  set have;
+run;
+
 
 ****************************************************
 1. SAS datastep array (This does the partial sums) *
@@ -235,4 +273,82 @@ merge
 tot = sum(number, of number_:); drop number_:;
 
 run;
+
+
+*******************************
+5. Scalable HASH solution by  *
+*******************************
+
+Scallable solution by
+
+Bartosz Jablonski
+yabwon@gmail.com
+
+you are 100% right, w=10000 window would blow up my session,
+that's why let me share one more approach.
+
+It uses only 2 set statements and an array, and doesn't
+require resorting (thanks to "The Magnificent-Do"!).
+
+all the best
+Bart
+
+data have ;
+  input date $ number ;
+  cards ;
+062018 10
+052018 15
+042018 20
+032018 15
+022018 30
+012018 10
+run ;
+
+%let W = 3 ;
+
+data want (drop = nr read loop _i_) ;
+
+  set have; /* the first "have" */
+  /* window "ahead" array */
+  array window[0:%eval(&W-1)] _temporary_;
+
+  /* in the first obs of the first "have"
+     we need to populate all window[*] array */
+  if _N_ = 1 then
+    do;
+      loop = &w; /* loop length for window */
+      read + 1;  /* enable reading the second "have" */
+    end;
+  else loop = 1;  /* loop length for _N_ > 1 (read single element) */
+
+  /* when in the first obs of the first "have":
+     populate all window[*] array, and with
+     next observations just replace one (replace last one with newest" */
+  do _I_ = 1 to loop;
+    /* do not read second "have" if we passed the last record */
+    if read then
+            set have(keep = number rename=(number = nr)) /* the second "have" */
+              end = eof
+              curobs = curobs
+            ;
+
+      /* populate the window[*] array by replacing "last in line"
+         modulo() function will do the trick */
+      window[ mod(curobs,&w.) ] = nr ;
+
+    /* if last record from the second "have" then: */
+    if eof then
+      do;
+        read = 0;   /* stop reading the second "have" but...  */
+        curobs + 1; /* continue populating window[*] array... */
+        nr = .;     /* with blanks                            */
+      end;
+  end;
+
+  tot = sum(of window[*]);
+run ;
+
+proc print;
+run;
+
 
