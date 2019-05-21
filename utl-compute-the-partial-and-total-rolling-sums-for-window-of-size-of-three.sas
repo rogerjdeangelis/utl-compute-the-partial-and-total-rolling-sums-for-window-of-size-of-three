@@ -3,7 +3,7 @@ SAS Forum: Compute the partial and total rolling sums for a window of size of th
 My suggestion is to use R if you plan on further time series analysis.
 Also, I think the partial windows may cause problems down the line.
 
-  Multiple Solutions (eight un all)
+  Multiple Solutions (nine in all)
 
          0. Brilliant innovative solution by (interplay of two set statements plug lag)
             Keintz, Mark
@@ -20,6 +20,14 @@ Also, I think the partial windows may cause problems down the line.
             Bartosz Jablonski
             yabwon@gmail.com
 
+         5. Scalable HASH solution by
+            Bartosz Jablonski
+            yabwon@gmail.com
+
+         6. Calculate rolling sums on large data sets with by grouping.
+             macro by
+            Fried Egg
+            00000a7c04fef931-dmarc-request@listserv.uga.edu
 
 github
 https://tinyurl.com/y5ub7x6e
@@ -101,15 +109,11 @@ WORK.WANT total obs=6
 *********************************************************************************
 0. Brilliant innovative solution by (interplay of two set statements plug lag)  *
 *********************************************************************************
-
 I realized I've come into this thread late, but I think this does the trick:
-
 Two set statements:     yes  (but one set is conditional, to avoid premature end-of-step)
 arrays:                 no
 summing statement       yes
 lag                     yes
-
-
 data have ;
   input date $ number ;
   cards ;
@@ -183,18 +187,15 @@ WORK.WANT total obs=6
   032018      15       50
   022018      30       65
   012018      10       55
-
 ***********************************************
 3. Ehanced simpler solutions by Paul Dorfman  *
 ***********************************************
-
 The standard economical way of addressing the problem of finding sequential
 rolling sums in a window with W items is using a simple W-queue: The enqueued
 item is added to the rolling sum, and the dequeued item is subtracted from it.
 Your problem is no exception; but it has a twist since you want to start the
 summation from the Wth item rather than #1. If it started with item #1, the
 solution would be most straightforward:
-
 data have ;
   input date $ number ;
   cards ;
@@ -205,7 +206,6 @@ data have ;
 022018 30
 012018 10
 run ;
-
 %let W = 3 ;
 data want (drop = number) ;
   set have ;
@@ -220,7 +220,6 @@ data want (drop = number) ;
   end ;
   stop ;
 run ;
-
 The only negative effect of this approach is that the output data set is now in the reversed order.
 It can be addressed in a variety of ways, e.g.:
 - Save P and resort by it
@@ -228,7 +227,6 @@ It can be addressed in a variety of ways, e.g.:
 the same step from P=1 to N using POINT=P
 - Store (P,TOT) pairs in a hash instead of the array and then do the same as above
 - Etc.
-
 Below is yet another variation (memory is assumed to be sufficient for the hash H):
 data _null_ ;
   dcl hash h (ordered:"A") ;
@@ -246,12 +244,9 @@ run ;
 Note that despite all these variations, the basic "+-" method of
 computing the rolling sum remains the same.
 Best regards
-
-
 **************************************************
 4. Flexible Minimal keystroke macro solution     *
 **************************************************
-
 data have;
 input date$ number;
 cards4;
@@ -263,7 +258,6 @@ cards4;
 012018 10
 ;;;;
 run;quit;
-
 data want;
 merge
   have
@@ -271,19 +265,13 @@ merge
   have(keep = number rename=(number=number_3) firstobs=3)
   ;
 tot = sum(number, of number_:); drop number_:;
-
 run;
-
-
 *******************************
 5. Scalable HASH solution by  *
 *******************************
-
 Scallable solution by
-
 Bartosz Jablonski
 yabwon@gmail.com
-
 you are 100% right, w=10000 window would blow up my session,
 that's why let me share one more approach.
 
@@ -350,5 +338,83 @@ run ;
 
 proc print;
 run;
+
+
+
+******************************************************************
+6. Calculate rolling sums on large data sets with by grouping.   *
+******************************************************************
+
+
+/**
+  * The purpose of this macro is to calculate rolling window summation
+  * <b>fast</b>.  It is aimed at any users who need to calculate rolling sums
+  * on large data sets with by grouping.
+  * <p>
+  * Implements a queue (fifo) using SAS array and uses APP functions for speed.
+  * <p>
+  * It is assumed that the ordering of the sequence for the rolling window is
+  * in ascending order and that at least one by group exists.  The maximum
+  * window size is 4,095.
+  * <p>
+  * Example usage:
+  * <pre>
+  * data have;
+  *   call streaminit(5);
+  *   do id=1 to 1e5;
+  *     do seq=0 to 55;
+  *       num=rounde(rand('uniform',5,55),5);
+  *       output;
+  *     end;
+  *   end;
+  * run;
+  * %RollingWindow(3)
+  * </pre>
+  *
+  * @param windowSize integer the size of summarization window
+  * @param num string the variable we want to sum
+  * @param sum string the variable name we output containing with sum value
+  * @param by string by statement syntax for determining groupings
+  * @param out string output dataset name
+  */
+%macro RollingWindow(windowSize, num=num, by=id seq, out=want);
+  data &out;
+    * Declare temporary array with windowSize number of elements. This array
+    * will be used to simulate a queue data structure;
+    array w[&windowSize] _temporary_;
+
+    * initialize queue with all 0's;
+    call pokelong(
+        repeat(put(0,rb8.),&windowSize),
+        addrlong(w[1]),
+        8*&w
+    );
+
+    * Loop over rows for the given by grouping.  Combined with the above is how
+    * we prevent by groups from inaccurately including elements in the sums from
+    * previous rows/by groups;
+    do until(last.id);
+      set have;
+      by &by;
+
+      * Implementation for FIFO (first-in, first-out).  We pop off the element
+      * at the first index and shift all other elements to their index-1;
+      call pokelong(
+        peekclong(addrlong(w[2]),8*&windowSize-8),
+        addrlong(w[1]),
+        8*&windowSize-8
+      );
+
+      * Assign the current row input value to the end of the queue;
+      w[&windowSize] = &num;
+
+      * Calculate the rolling window sum and output;
+      &sum = sum(of w[*]);
+      output;
+    end;
+  run;
+%mend;
+
+
 
 
