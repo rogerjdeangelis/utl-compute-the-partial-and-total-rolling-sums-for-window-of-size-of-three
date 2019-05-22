@@ -28,6 +28,10 @@ Also, I think the partial windows may cause problems down the line.
              macro by
             Fried Egg
             00000a7c04fef931-dmarc-request@listserv.uga.edu
+            
+see May 22nd 2019 Poscript on end by
+Keintz, Mark
+mkeintz@wharton.upenn.edu
 
 github
 https://tinyurl.com/y5ub7x6e
@@ -414,6 +418,64 @@ run;
     end;
   run;
 %mend;
+
+
+see May 22nd 2019 Poscript on end by
+Keintz, Mark
+mkeintz@wharton.upenn.edu
+
+Assuming one is obligated to repeatedly calculate TOTAL=SUM(of w{*}) instead
+of (probably faster for long windows) maintaining a rolling sum, adding the new
+item and subtracting the old, I don't see a good use case for APP functions in
+maintaining the array.  They are being used to maintain the order of addends
+for variables that aren't destined for output.  And the SUM function do
+es not care (within machine precision limits) about the order of the addends.
+
+Even if there is a good (probably administrative) reason to repeatedly
+calculate sum(of w{*}), I suggest just rolling the index of the array
+element from zero to WINDOSIZE-1 and back to zero, thereby replacing
+the stale element with the new element in a single assignment -
+likely an iconic application of the MOD function:
+
+%let UB=%eval(&windowsize-1);  /* Upper bound for array */
+
+data want (drop=w_: i);
+  array w_ {0:&ub};
+  do i=0 by 1 until (last.id);
+    set have;
+    by id;
+    w_{mod(i,&windowsize)}=x;
+    total=sum(of w_{*});
+   output;
+  end;
+run;
+
+This is not to devalue the APP functions,  I saw an excellent presentation
+by Paul Dorfman and Lessia Shajenko at the first (and so far only) IFSUG conference
+showing impressive (tens or hundreds time faster IIRC) performance gains for
+"precessioning" long historic series represented within observations (i.e. not
+across observations).  I.e. as if one were to keep LAG1(x), LAG2(x) …
+.. LAG1000(x) in each obs.
+
+And what did I mean by "within machine precision limits" relative to the SUM function?
+Here's an example of sum(a,b,c) differing from sum(a,c,b):
+
+data _null_;
+  sum1=sum(constant('exactint',8),-constant('exactint',8),1);
+  sum2=sum(constant('exactint',8),1,-constant('exactint',8));
+  diff=sum1-sum2;
+  put sum1= sum2= diff=;
+run;
+
+Of course, this is a clear case of pathological data (i.e. in this case there is an
+addend equal or less than  1/(constant('exactint',8) of the prior partial sum.
+
+
+
+
+
+
+
 
 
 
